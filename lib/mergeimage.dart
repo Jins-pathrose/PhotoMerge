@@ -5,17 +5,35 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:ui' as ui;
 
-class MergeImagesPage extends StatefulWidget {
+class MergeWithGeneratedImagePage extends StatefulWidget {
   @override
-  _MergeImagesPageState createState() => _MergeImagesPageState();
+  _MergeWithGeneratedImagePageState createState() => _MergeWithGeneratedImagePageState();
 }
 
-class _MergeImagesPageState extends State<MergeImagesPage> {
+class _MergeWithGeneratedImagePageState extends State<MergeWithGeneratedImagePage> {
   Uint8List? mergedImageBytes;
   String? savedFilePath;
   bool isMerging = false;
   bool isDownloading = false;
+
+  // Generate an image using CustomPainter
+  Future<Uint8List> _generateImage() async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final size = Size(300, 300); // Size of the generated image
+    
+    // Create a painter for the generated image
+    final painter = _GeneratedImagePainter();
+    painter.paint(canvas, size);
+    
+    // Convert to image
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.width.toInt(), size.height.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
 
   Future<void> mergeImages() async {
     setState(() {
@@ -25,12 +43,13 @@ class _MergeImagesPageState extends State<MergeImagesPage> {
     });
 
     try {
-      // Load images from assets
+      // Load image from assets
       final ByteData data1 = await rootBundle.load('assets/jins9.jpg');
-      final ByteData data2 = await rootBundle.load('assets/jins10.jpg');
-
       final img.Image image1 = img.decodeImage(data1.buffer.asUint8List())!;
-      final img.Image image2 = img.decodeImage(data2.buffer.asUint8List())!;
+      
+      // Generate the second image
+      final Uint8List generatedImageBytes = await _generateImage();
+      final img.Image image2 = img.decodeImage(generatedImageBytes)!;
 
       // Create canvas with max width and combined height
       final int newWidth = image1.width > image2.width ? image1.width : image2.width;
@@ -73,19 +92,16 @@ class _MergeImagesPageState extends State<MergeImagesPage> {
     });
 
     try {
-      // Request storage permission based on Android version
+      // Request storage permission
       if (Platform.isAndroid) {
         if (await Permission.storage.request().isGranted) {
-          // For Android 10 and below
           await saveToDownloads();
         } else if (await Permission.manageExternalStorage.request().isGranted) {
-          // For Android 11 and above
           await saveToDownloads();
         } else {
           throw Exception('Storage permission not granted');
         }
       } else if (Platform.isIOS) {
-        // For iOS
         if (await Permission.photos.request().isGranted) {
           await saveToDownloads();
         } else {
@@ -103,18 +119,14 @@ class _MergeImagesPageState extends State<MergeImagesPage> {
   }
 
   Future<void> saveToDownloads() async {
-    // Get download directory
     Directory? downloadsDir;
 
     if (Platform.isAndroid) {
-      // Try to get the actual Downloads directory
       downloadsDir = Directory('/storage/emulated/0/Download');
       if (!await downloadsDir.exists()) {
-        // Fallback to external storage directory
         downloadsDir = await getExternalStorageDirectory();
       }
     } else if (Platform.isIOS) {
-      // For iOS, use the documents directory
       downloadsDir = await getApplicationDocumentsDirectory();
     }
 
@@ -122,11 +134,8 @@ class _MergeImagesPageState extends State<MergeImagesPage> {
       throw Exception('Could not access downloads directory');
     }
 
-    // Create file with timestamp
     final fileName = 'merged_image_${DateTime.now().millisecondsSinceEpoch}.png';
     final downloadFile = File('${downloadsDir.path}/$fileName');
-
-    // Write file
     await downloadFile.writeAsBytes(mergedImageBytes!);
 
     setState(() {
@@ -176,7 +185,7 @@ class _MergeImagesPageState extends State<MergeImagesPage> {
                       borderRadius: BorderRadius.circular(20),
                       child: Image.memory(
                         mergedImageBytes!,
-                        fit: BoxFit.cover,
+                        fit: BoxFit.contain,
                       ),
                     ),
                   ),
@@ -241,4 +250,49 @@ class _MergeImagesPageState extends State<MergeImagesPage> {
       ),
     );
   }
+}
+
+// Custom painter for the generated image
+class _GeneratedImagePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.blue
+      ..style = PaintingStyle.fill;
+    
+    // Draw a background
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), 
+      Paint()..color = Colors.white);
+    
+    // Draw a circle
+    canvas.drawCircle(
+      Offset(size.width / 2, size.height / 2),
+      size.width / 3,
+      paint,
+    );
+    
+    // Add some text
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: 'Generated',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 30,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(
+        (size.width - textPainter.width) / 2,
+        (size.height - textPainter.height) / 2,
+      ),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

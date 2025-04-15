@@ -17,18 +17,63 @@ class _MergeWithGeneratedImagePageState extends State<MergeWithGeneratedImagePag
   String? savedFilePath;
   bool isMerging = false;
   bool isDownloading = false;
+  ui.Image? secondImage;
+  ui.Image? firstImage;
+  Color footerColor = Colors.teal;
 
-  // Generate an image using CustomPainter
+  @override
+  void initState() {
+    super.initState();
+    _loadImages();
+  }
+
+  Future<void> _loadImages() async {
+    try {
+      // Load first image
+      final ByteData data1 = await rootBundle.load('assets/jins9.jpg');
+      final Uint8List bytes1 = data1.buffer.asUint8List();
+      final ui.Codec codec1 = await ui.instantiateImageCodec(bytes1);
+      final ui.FrameInfo fi1 = await codec1.getNextFrame();
+      
+      // Load second image
+      final ByteData data2 = await rootBundle.load('assets/jins10.jpg');
+      final Uint8List bytes2 = data2.buffer.asUint8List();
+      final ui.Codec codec2 = await ui.instantiateImageCodec(bytes2);
+      final ui.FrameInfo fi2 = await codec2.getNextFrame();
+
+      setState(() {
+        firstImage = fi1.image;
+        secondImage = fi2.image;
+      });
+    } catch (e) {
+      print('Error loading images: $e');
+    }
+  }
+
+  void _updateFooterColor(Color color) {
+    setState(() {
+      footerColor = color;
+    });
+  }
+
   Future<Uint8List> _generateImage() async {
+    if (firstImage == null || secondImage == null) {
+      throw Exception('Images not loaded yet');
+    }
+
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    final size = Size(300, 300); // Size of the generated image
     
-    // Create a painter for the generated image
-    final painter = _GeneratedImagePainter();
+    // Use the width of the first image for the footer
+    final size = Size(firstImage!.width.toDouble(), 300); // Height can be whatever you want
+    
+    final painter = _GeneratedImagePainter(
+      secondImage: secondImage,
+      backgroundColor: footerColor,
+      targetWidth: firstImage!.width.toDouble(),
+    );
     painter.paint(canvas, size);
     
-    // Convert to image
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.width.toInt(), size.height.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -36,6 +81,13 @@ class _MergeWithGeneratedImagePageState extends State<MergeWithGeneratedImagePag
   }
 
   Future<void> mergeImages() async {
+    if (firstImage == null || secondImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Images are still loading. Please wait.')),
+      );
+      return;
+    }
+
     setState(() {
       isMerging = true;
       mergedImageBytes = null;
@@ -43,16 +95,16 @@ class _MergeWithGeneratedImagePageState extends State<MergeWithGeneratedImagePag
     });
 
     try {
-      // Load image from assets
-      final ByteData data1 = await rootBundle.load('assets/jins9.jpg');
-      final img.Image image1 = img.decodeImage(data1.buffer.asUint8List())!;
-      
-      // Generate the second image
+      // Generate the footer image with matching width
       final Uint8List generatedImageBytes = await _generateImage();
       final img.Image image2 = img.decodeImage(generatedImageBytes)!;
 
-      // Create canvas with max width and combined height
-      final int newWidth = image1.width > image2.width ? image1.width : image2.width;
+      // Convert first image to img.Image format
+      final ByteData data1 = await rootBundle.load('assets/jins9.jpg');
+      final img.Image image1 = img.decodeImage(data1.buffer.asUint8List())!;
+
+      // Create canvas with first image width and combined height
+      final int newWidth = image1.width;
       final int newHeight = image1.height + image2.height;
       final img.Image merged = img.Image(width: newWidth, height: newHeight);
 
@@ -84,7 +136,8 @@ class _MergeWithGeneratedImagePageState extends State<MergeWithGeneratedImagePag
     }
   }
 
-  Future<void> downloadImage() async {
+  // ... (keep the existing downloadImage and saveToDownloads methods unchanged)
+ Future<void> downloadImage() async {
     if (savedFilePath == null || mergedImageBytes == null) return;
 
     setState(() {
@@ -149,28 +202,20 @@ class _MergeWithGeneratedImagePageState extends State<MergeWithGeneratedImagePag
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Merge & Download Images',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-        ),
+        title: Text('Merge & Download Images'),
         centerTitle: true,
         backgroundColor: Colors.deepPurpleAccent,
-        elevation: 0,
       ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
+            colors: [Colors.deepPurpleAccent.withOpacity(0.9), Colors.purple.shade400],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Colors.deepPurpleAccent.withOpacity(0.9),
-              Colors.purple.shade400,
-            ],
           ),
         ),
         child: Center(
@@ -195,51 +240,52 @@ class _MergeWithGeneratedImagePageState extends State<MergeWithGeneratedImagePag
                   child: Center(
                     child: Text(
                       isMerging ? 'Merging images...' : 'Press button to merge images',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white,
-                      ),
+                      style: TextStyle(color: Colors.white),
                     ),
                   ),
                 ),
+              
+              SizedBox(height: 10),
+              Text('Footer Background Color:', style: TextStyle(color: Colors.white)),
+              SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _colorOption(Colors.white),
+                    _colorOption(Colors.yellow),
+                    _colorOption(Colors.brown),
+                    _colorOption(Colors.cyan),
+                    _colorOption(Colors.lime),
+                    _colorOption(Colors.lightBlue),
+                    _colorOption(Colors.lightGreen),
+                    _colorOption(Colors.grey),
+                    _colorOption(Colors.black),
+                    _colorOption(Colors.red),
+                    _colorOption(Colors.blue),
+                    _colorOption(Colors.green),
+                    _colorOption(Colors.orange),
+                    _colorOption(Colors.purple),
+                    _colorOption(Colors.teal),
+                    _colorOption(Colors.pink),
+                    _colorOption(Colors.indigo),
+                    _colorOption(Colors.amber),
+                  ],
+                ),
+              ),
               SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   ElevatedButton(
                     onPressed: isMerging ? null : mergeImages,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.pinkAccent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                      elevation: 5,
-                    ),
-                    child: Text(
-                      'Merge Images',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
+                    child: Text('Merge Images'),
                   ),
                   ElevatedButton(
-                    onPressed: (mergedImageBytes == null || isDownloading)
-                        ? null
-                        : downloadImage,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.tealAccent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                      elevation: 5,
-                    ),
-                    child: isDownloading
+                    onPressed: (mergedImageBytes == null || isDownloading) ? null : downloadImage,
+                    child: isDownloading 
                         ? CircularProgressIndicator(color: Colors.black)
-                        : Text(
-                            'Download Image',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
+                        : Text('Download Image'),
                   ),
                 ],
               ),
@@ -250,49 +296,81 @@ class _MergeWithGeneratedImagePageState extends State<MergeWithGeneratedImagePag
       ),
     );
   }
-}
 
-// Custom painter for the generated image
-class _GeneratedImagePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.blue
-      ..style = PaintingStyle.fill;
-    
-    // Draw a background
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), 
-      Paint()..color = Colors.white);
-    
-    // Draw a circle
-    canvas.drawCircle(
-      Offset(size.width / 2, size.height / 2),
-      size.width / 3,
-      paint,
-    );
-    
-    // Add some text
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: 'Generated',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 30,
-          fontWeight: FontWeight.bold,
+  Widget _colorOption(Color color) {
+    return GestureDetector(
+      onTap: () => _updateFooterColor(color),
+      child: Container(
+        margin: EdgeInsets.symmetric(horizontal: 5),
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: footerColor == color ? Colors.white : Colors.transparent,
+            width: 2,
+          ),
         ),
-      ),
-      textDirection: TextDirection.ltr,
-    );
-    textPainter.layout();
-    textPainter.paint(
-      canvas,
-      Offset(
-        (size.width - textPainter.width) / 2,
-        (size.height - textPainter.height) / 2,
       ),
     );
   }
+}
+
+class _GeneratedImagePainter extends CustomPainter {
+  final ui.Image? secondImage;
+  final Color backgroundColor;
+  final double targetWidth;
+
+  _GeneratedImagePainter({
+    required this.secondImage,
+    required this.backgroundColor,
+    required this.targetWidth,
+  });
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  void paint(Canvas canvas, Size size) {
+    // Draw background with the target width
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, targetWidth, size.height), 
+      Paint()..color = backgroundColor
+    );
+    
+    if (secondImage != null) {
+      // Calculate aspect ratio
+      final double aspectRatio = secondImage!.width / secondImage!.height;
+      
+      // Calculate dimensions to fit within the footer while maintaining aspect ratio
+      double imageWidth = targetWidth * 0.5; // Use 50% of width for the image
+      double imageHeight = imageWidth / aspectRatio;
+      
+      // If image height exceeds the footer height, scale it down
+      if (imageHeight > size.height) {
+        imageHeight = size.height;
+        imageWidth = imageHeight * aspectRatio;
+      }
+      
+      // Center the image vertically
+      double top = (size.height - imageHeight) / 2;
+      
+      final Rect destRect = Rect.fromLTWH(0, top, imageWidth, imageHeight);
+      
+      canvas.drawImageRect(
+        secondImage!,
+        Rect.fromLTWH(0, 0, secondImage!.width.toDouble(), secondImage!.height.toDouble()),
+        destRect,
+        Paint()..filterQuality = FilterQuality.high,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    if (oldDelegate is _GeneratedImagePainter) {
+      return oldDelegate.secondImage != secondImage || 
+             oldDelegate.backgroundColor != backgroundColor ||
+             oldDelegate.targetWidth != targetWidth;
+    }
+    return true;
+  }
 }
